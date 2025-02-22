@@ -9,12 +9,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.document_loaders import WebBaseLoader
 import bs4
-import sys
-if "railway" not in sys.platform:
-    import tkinter as tk
-    from tkinter import filedialog
-
-
+import tkinter as tk
+from tkinter import filedialog
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.chains import create_history_aware_retriever
 from langchain.chains import create_retrieval_chain
@@ -24,10 +20,12 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_google_genai import ChatGoogleGenerativeAI
-from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from typing import Dict,Optional,Any
 import uvicorn
+import os
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from typing import List, Dict, Any, Optional
+import shutil
 import os
 
 from dotenv import load_dotenv
@@ -36,6 +34,9 @@ load_dotenv()
 
 
 app = FastAPI()
+
+UPLOAD_FOLDER = "uploaded_files"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure upload folder exists
 
 # Store chat history per session
 store: Dict[str, BaseChatMessageHistory] = {}
@@ -51,7 +52,7 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
 
 
 class DataUploadRequest(BaseModel):
-    docs_choice: int
+    # docs_choice: int
     urls: list[str]
     session_id: str
 
@@ -68,25 +69,48 @@ def read_root():
         return {"message": "FastAPI is running! No response available yet."}
     return latest_response
 
+@app.post("/upload/")
+async def upload_file(files: List[UploadFile] = File(...)):
+    """
+    Endpoint to upload multiple PDF files.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files selected.")
+
+    uploaded_files = []
+
+    for file in files:
+        if file.filename is None or not file.filename.endswith(".pdf"):
+            raise HTTPException(status_code=400, detail=f"Invalid file format: {file.filename}. Only PDFs are allowed.")
+
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="File name is missing.")
+        file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+
+        # Save file to server
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        uploaded_files.append(file.filename)
+
+    return {"uploaded_files": uploaded_files, "message": "Files uploaded successfully."}
+
+
 @app.post("/init")
 def init_session(request: DataUploadRequest):
+    """
+    Process all uploaded PDF files and optionally process URLs.
+    """
     try:
-        docs_choice = request.docs_choice
-        session_id = request.session_id
+        uploaded_files = os.listdir(UPLOAD_FOLDER)
+        if not uploaded_files:
+            raise HTTPException(status_code=400, detail="No files found. Please upload PDFs first.")
 
-        if docs_choice < 1 or docs_choice > 4:
-            raise HTTPException(status_code=400, detail="Invalid choice. Please choose a number between 1 and 4.")
-
-        root = tk.Tk()
-        root.withdraw()  # Hide the main window
-        root.call('wm', 'attributes', '.', '-topmost', True)  # Bring dialog to front
-
-        
         all_splits = []
-        for i in range(1, docs_choice + 1):
-            file_path = filedialog.askopenfilename(filetypes=[("PDF Files", "*.pdf")])
-            if not file_path:
-                raise HTTPException(status_code=400, detail="No file selected.")
+
+        # Process uploaded PDF files
+        for file_name in uploaded_files:
+            file_path = os.path.join(UPLOAD_FOLDER, file_name)
             
             loader = PyPDFLoader(file_path)
             docs = loader.load()
@@ -96,38 +120,34 @@ def init_session(request: DataUploadRequest):
 
             all_splits.extend(splits)
 
-        # Process URLs from the request; stop when a URL equals 'done'
-        processed_urls = []
-        for url in request.urls:
-            if url.lower() == 'done':
-                break
-            processed_urls.append(url)
-        
-        if not processed_urls:
-            return {"message": "No URLs provided, nothing to process."}
-        
-        loader1 = WebBaseLoader(web_paths=processed_urls)
-        docs1 = loader1.load()
+        # Process URLs if provided and not empty
+        if request.urls:
+            processed_urls = [url for url in request.urls if url.lower() != "done"]
+            
+            if processed_urls:  # Only process URLs if there are valid ones
+                loader1 = WebBaseLoader(web_paths=processed_urls)
+                docs1 = loader1.load()
 
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        splits1 = text_splitter.split_documents(docs1)
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+                splits1 = text_splitter.split_documents(docs1)
 
-        combined_splits = all_splits + splits1
+                all_splits.extend(splits1)
 
-
+        # Ensure there is data to store
+        if not all_splits:
+            raise HTTPException(status_code=400, detail="No data to process.")
 
         embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
 
-
-        # Use BERT embeddings from Hugging Face
-        vectorstore = FAISS.from_documents(documents=combined_splits, embedding=embeddings)
-
-        data_store[session_id] = vectorstore  # Store the processed data
+        # Use FAISS to store embeddings
+        vectorstore = FAISS.from_documents(documents=all_splits, embedding=embeddings)
+        data_store[request.session_id] = vectorstore  # Store the processed data
 
         return {"message": "Data uploaded and processed successfully!"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
     
 
 @app.post("/query")
