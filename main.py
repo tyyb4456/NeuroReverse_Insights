@@ -27,6 +27,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from typing import List, Dict, Any, Optional
 import shutil
 import os
+from fastapi.middleware.cors import CORSMiddleware
 
 from dotenv import load_dotenv
 
@@ -34,6 +35,14 @@ load_dotenv()
 
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Change to "*" if testing
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)  # Ensure upload folder exists
