@@ -12,8 +12,9 @@ import bs4
 import sys
 if "railway" not in sys.platform:
     import tkinter as tk
+    from tkinter import filedialog
 
-from tkinter import filedialog
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.chains import create_history_aware_retriever
 from langchain.chains import create_retrieval_chain
