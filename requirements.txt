@@ -1,0 +1,12 @@
+langchain
+langchain-core
+langchain-google-genai
+langchain_community
+bs4
+pypdf2
+pypdf
+dotenv
+faiss-cpu
+ibm-watson>=8.0.0
+ibm_watsonx_ai
+fastapi[standard]
