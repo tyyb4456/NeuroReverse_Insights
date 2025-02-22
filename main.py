@@ -9,8 +9,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_community.document_loaders import WebBaseLoader
 import bs4
-import tkinter as tk
-from tkinter import filedialog
+# import tkinter as tk
+# from tkinter import filedialog
 from langchain_community.document_loaders import PyPDFLoader
 from langchain.chains import create_history_aware_retriever
 from langchain.chains import create_retrieval_chain
