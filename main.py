@@ -98,7 +98,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://neuro-reverse-six.vercel.app/"],  # Change to "*" if testing
+    allow_origins=["*"],  # Change to "*" if testing
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
