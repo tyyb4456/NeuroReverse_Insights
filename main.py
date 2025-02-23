@@ -86,6 +86,10 @@ async def upload_file(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files selected.")
 
+        # Remove previous files before uploading new ones
+    for existing_file in os.listdir(UPLOAD_FOLDER):
+        os.remove(os.path.join(UPLOAD_FOLDER, existing_file))
+
     uploaded_files = []
 
     for file in files:
@@ -131,7 +135,7 @@ def init_session(request: DataUploadRequest):
 
         # Process URLs if provided and not empty
         if request.urls:
-            processed_urls = [url for url in request.urls if url.lower() != "done"]
+            processed_urls = [url for url in request.urls if url.lower() != ""]
             
             if processed_urls:  # Only process URLs if there are valid ones
                 loader1 = WebBaseLoader(web_paths=processed_urls)
@@ -178,18 +182,19 @@ def query_rag(request: QueryRequest):
          # Improved system prompt for an in-depth product breakdown analysis.
         product_system_prompt = (
             "You are an expert product analyst with extensive knowledge across various industries. "
-            "Using the retrieved context—which may include product manuals, patents, datasheets, and other technical documents—"
-            "perform a comprehensive analysis and breakdown of the product. Your analysis should be thorough and detailed, covering multiple facets of the product. "
-            "Please include the following in your answer:\n\n"
-            "1. An extensive overview of the product, including its primary function, market positioning, and intended use cases.\n"
-            "2. A detailed breakdown of key features, innovative elements, and unique selling propositions.\n"
-            "3. In-depth technical specifications and performance metrics, with comparisons to industry standards or competitors where available.\n"
-            "4. Critical insights regarding the product’s advantages and any potential limitations.\n"
-            "5. Actionable suggestions or recommendations for improvement, supported by evidence from the context.\n\n"
-            "- If only limited context is available, provide a short, concise answer that directly addresses the question.\n"
-            "- If no relevant context is available, plz respond that 'I dont know the answer'.\n\n"
-            "Context:\n{context}"
+            "Using the retrieved context—including product manuals, patents, datasheets, and other technical documents—"
+            "perform a comprehensive analysis and breakdown of the product. Your response should be thorough, detailed, and well-structured.\n\n"
+            "If the user's question is unrelated to the provided context, respond with: 'I don’t know the answer.'\n\n"
+            "Your analysis should include:\n"
+            "1. **Product Overview** – Describe the product’s primary function, market positioning, and intended use cases.\n"
+            "2. **Key Features & Innovations** – Highlight notable features, innovative aspects, and unique selling propositions.\n"
+            "3. **Technical Specifications & Performance** – Provide in-depth technical details and compare them to industry standards or competitors when applicable.\n"
+            "4. **Strengths & Limitations** – Outline the product’s advantages and any potential drawbacks based on the context.\n"
+            "5. **Recommendations for Improvement** – Offer actionable suggestions supported by evidence from the provided documents.\n\n"
+            "If only limited context is available, provide a concise response that directly addresses the question.\n\n"
+            "**Context:**\n{context}"
         )
+
 
         # Contextualization prompt to reformulate a standalone product analysis question.
         contextualize_product_q_system_prompt = (
@@ -250,4 +255,4 @@ def query_rag(request: QueryRequest):
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port, timeout_keep_alive=420)
