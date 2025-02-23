@@ -28,10 +28,70 @@ from typing import List, Dict, Any, Optional
 import shutil
 import os
 from fastapi.middleware.cors import CORSMiddleware
+from langchain.llms.base import LLM
+from pydantic import BaseModel, Field
+from ibm_watsonx_ai import Credentials
+from ibm_watsonx_ai.foundation_models import ModelInference
+from ibm_watsonx_ai.metanames import GenTextParamsMetaNames as GenParams
+from ibm_watsonx_ai.foundation_models.utils.enums import ModelTypes, DecodingMethods
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+API_KEY = os.getenv("WATSON_API_KEY")
+PROJECT_ID = os.getenv("WATSON_PROJECT_ID")
+
+class WatsonxGraniteLLM(LLM, BaseModel):
+    model_id: str = "mistralai/mixtral-8x7b-instruct-v01"
+    api_key: str = Field(..., description="IBM Watson API Key")
+    url: str = "https://us-south.ml.cloud.ibm.com"
+    project_id: Optional[str] = None
+
+    class Config:
+        arbitrary_types_allowed = True
+    def __init__(self, api_key: str, project_id: Optional[str] = None, **kwargs):
+        # Explicitly initialize both parent classes
+        # super().__init__(**kwargs)  # Initialize LLM (if needed)
+        BaseModel.__init__(self, api_key=api_key, project_id=project_id, **kwargs)
+
+        
+        self.api_key = api_key
+        self.project_id = project_id
+
+    @property
+    def _llm_type(self) -> str:
+        return "IBM Watsonx Granite"
+
+    def _call(self, prompt: str, stop: Optional[List[str]] = None) -> str:
+        gen_params = {
+            GenParams.DECODING_METHOD: DecodingMethods.GREEDY,
+            GenParams.TEMPERATURE: 0.8,
+            GenParams.MIN_NEW_TOKENS: 10,
+            GenParams.MAX_NEW_TOKENS: 1024
+        }
+
+        credentials = Credentials(api_key=self.api_key, url=self.url)
+
+        model_inference = ModelInference(
+            model_id=self.model_id,
+            params=gen_params,
+            credentials=credentials,
+            project_id=self.project_id
+        )
+
+        response = model_inference.generate(prompt)
+        results = response.get('results', [])
+        generated_texts = [item.get('generated_text') for item in results]
+
+        return generated_texts[0] if generated_texts else ""
+    
+# Example Usage
+if API_KEY is None:
+    raise ValueError("WATSON_API_KEY environment variable is not set")
+
+watson_llm = WatsonxGraniteLLM(api_key=API_KEY, 
+                               project_id=PROJECT_ID)
 
 
 app = FastAPI()
@@ -70,13 +130,13 @@ class QueryRequest(BaseModel):
     query: str
 
 # Store the last response in memory
-latest_response: Optional[Dict[str, Any]] = None
+response: Optional[Dict[str, Any]] = None
 
 @app.get("/")
 def read_root():
-    if latest_response is None:
+    if response is None:
         return {"message": "FastAPI is running! No response available yet."}
-    return latest_response
+    return response
 
 @app.post("/upload/")
 async def upload_file(files: List[UploadFile] = File(...)):
@@ -167,7 +227,7 @@ def init_session(request: DataUploadRequest):
 def query_rag(request: QueryRequest):
     try:
 
-        global latest_response  # Make it a global variable
+        global response  # Make it a global variable
         session_id = request.session_id
         query = request.query
 
@@ -222,7 +282,7 @@ def query_rag(request: QueryRequest):
 
         # Setup a history-aware retriever that uses the contextualized prompt.
         history_aware_retriever = create_history_aware_retriever(
-            model,retriever, contextualize_product_q_prompt
+            watson_llm,retriever, contextualize_product_q_prompt
         )
 
         # Build the document chain using the product analysis QA prompt.
@@ -241,14 +301,14 @@ def query_rag(request: QueryRequest):
             output_messages_key="answer",
         )
 
-        response = conversational_rag_chain.invoke(
+        llm_response = conversational_rag_chain.invoke(
             {"input": query},
             config={"configurable": {"session_id": session_id}},
         )
         
-        latest_response = {"response": response["answer"]}  # Update the global variable
+        response = {"response": llm_response["answer"]}  # Update the global variable
 
-        return latest_response
+        return response
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

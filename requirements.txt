@@ -10,3 +10,4 @@ faiss-cpu
 ibm-watson>=8.0.0
 ibm_watsonx_ai
 fastapi[standard]
+ibm-watsonx-ai
