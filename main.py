@@ -282,7 +282,7 @@ def query_rag(request: QueryRequest):
 
         # Setup a history-aware retriever that uses the contextualized prompt.
         history_aware_retriever = create_history_aware_retriever(
-            watson_llm,retriever, contextualize_product_q_prompt
+            model,retriever, contextualize_product_q_prompt
         )
 
         # Build the document chain using the product analysis QA prompt.
