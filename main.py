@@ -237,7 +237,7 @@ def query_rag(request: QueryRequest):
         vectorstore = data_store[session_id]  # Retrieve stored data
         retriever = vectorstore.as_retriever()
 
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
+        model = ChatGoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.3)
 
          # Improved system prompt for an in-depth product breakdown analysis.
         product_system_prompt = (
